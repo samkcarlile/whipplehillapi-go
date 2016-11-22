@@ -56,9 +56,10 @@ type UserInfo struct {
 //Context has things that aren't directly related to user's characterstics but rather the actual classes and sections
 // that the user is in. Anything in the school context or other necessary information will be stored on this struct.
 type Context struct {
+	SchoolName             string
 	SchoolYearLabel        string
-	CurrentDurationID      int64
-	CurrentMarkingPeriodID int64
+	CurrentDurationID      int //this is a semester identifier
+	CurrentMarkingPeriodID int //this is a quarter identifier. You need both
 }
 
 //AcademicGroup is synonymous with a class that the user is enrolled in. I just use AcademicGroup because there are
@@ -199,6 +200,71 @@ func (wac *WhipplehillAPIClient) LoadSchoolContext() error {
 	if err != nil {
 		return err
 	}
+	wac.Context.SchoolYearLabel = jsonBody["CurrentSchoolYear"].(H)["SchoolYearLabel"].(string)
+	wac.Context.SchoolName = jsonBody["SchoolInfo"].(H)["SchoolName"].(string)
+
+	err = wac.getCurrentDurationID()
+	if err != nil {
+		return err
+	}
+
+}
+
+//
+
+func (wac *WhipplehillAPIClient) getCurrentDurationID() error {
+	urlWithQueries := addQueries(wac.APIPaths.TermList, map[string]string{
+		"studentUserId":   string(wac.UserInfo.UserID),
+		"personaId":       string(wac.UserInfo.PersonaID),
+		"schoolYearLabel": wac.Context.SchoolYearLabel,
+	})
+	body, err := wac.request("GET", urlWithQueries, nil, nil)
+	if err != nil {
+		return err
+	}
+
+	durations := make([]H, 0)
+	err = json.Unmarshal(body, durations)
+	if err != nil {
+		return err
+	}
+
+	found := false
+	var duration H
+	for i := 0; i < len(durations) && !found; i++ {
+		duration = durations[i]
+		currentIndicator := duration["CurrentInd"].(int)
+		offeringType := duration["OfferingType"].(int)
+		if offeringType == 1 && currentIndicator == 1 {
+			found = true
+		}
+	}
+
+	wac.Context.CurrentDurationID = duration["DurationId"].(int)
+	return nil
+
+}
+
+func (wac *WhipplehillAPIClient) getAcademicGroups() error {
+	urlWithQueries := addQueries(wac.APIPaths.AcademicGroups, map[string]string{
+		"userId":          string(wac.UserInfo.UserID),
+		"schoolYearLabel": string(wac.Context.SchoolYearLabel),
+		"memberLevel":     "3",
+		"persona":         string(wac.UserInfo.PersonaID),
+		"durationList":    string(wac.Context.CurrentDurationID),
+		"markingPeriodId": "", //This has to be sent with nothing in it or the request returns an error.
+	})
+	body, err := wac.request("GET", urlWithQueries, nil, nil)
+	if err != nil {
+		return err
+	}
+
+	academicGroups := make([]H, 0)
+	err = json.Unmarshal(body, academicGroups)
+	if err != nil {
+		return err
+	}
+
 }
 
 //Marshal converts the map to json
