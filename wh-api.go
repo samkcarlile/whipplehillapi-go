@@ -14,7 +14,8 @@ import (
 //Notes:
 // * There is a constant called MemberLevel that should always be equal to 3
 
-type whippleHillAPIPaths struct {
+//WhippleHillAPIPaths holds the api paths
+type WhippleHillAPIPaths struct {
 	SignIn               string
 	SchoolContext        string
 	Context              string
@@ -24,37 +25,36 @@ type whippleHillAPIPaths struct {
 	GradebookAssignments string
 }
 
-//BaseURL is le baseurl...for now. I'm gonna fix the whole url thing nicely soon.
-var BaseURL = "https://fwcd.myschoolapp.com"
-
-//WhippleHillAPIPaths is the struct to serve as a container for all the (necessary) API paths
-var WhippleHillAPIPaths = whippleHillAPIPaths{
-	SignIn:               BaseURL + "/api/SignIn",
-	SchoolContext:        BaseURL + "/api/webapp/schoolcontext",
-	Context:              BaseURL + "/api/webapp/context",
-	TermList:             BaseURL + "/api/DataDirect/StudentGroupTermList/",
-	AcademicGroups:       BaseURL + "/api/datadirect/ParentStudentUserAcademicGroupsGet",
-	MarkingPeriods:       BaseURL + "/api/gradebook/GradeBookMyDayMarkingPeriods",
-	GradebookAssignments: BaseURL + "/api/datadirect/GradeBookPerformanceAssignmentStudentList/",
+//GetAPIPaths returns a WhippleHillAPIPaths struct with the paths set to the provided baseURL.
+func GetAPIPaths(baseURL string) *WhippleHillAPIPaths {
+	return &WhippleHillAPIPaths{
+		SignIn:               baseURL + "/api/SignIn",
+		SchoolContext:        baseURL + "/api/webapp/schoolcontext",
+		Context:              baseURL + "/api/webapp/context",
+		TermList:             baseURL + "/api/DataDirect/StudentGroupTermList/",
+		AcademicGroups:       baseURL + "/api/datadirect/ParentStudentUserAcademicGroupsGet",
+		MarkingPeriods:       baseURL + "/api/gradebook/GradeBookMyDayMarkingPeriods",
+		GradebookAssignments: baseURL + "/api/datadirect/GradeBookPerformanceAssignmentStudentList/",
+	}
 }
 
 //H shortcut
 type H map[string]interface{}
 
-//Headers is used in my sendRequest method
+//Headers is used in the wac.request method
 type Headers map[string]string
 
 //UserInfo has the username and password of the user along with some other stuff like the UserID
-//and things related to the user that don't change with every request.
+//and things related to the user that don't change with every request. Anything in the student context will be on this struct.
 type UserInfo struct {
 	Username  string
 	Password  string
-	UserID    int64
+	UserID    int
 	PersonaID int
 }
 
 //Context has things that aren't directly related to user's characterstics but rather the actual classes and sections
-// that the user is in
+// that the user is in. Anything in the school context or other necessary information will be stored on this struct.
 type Context struct {
 	SchoolYearLabel        string
 	CurrentDurationID      int64
@@ -86,18 +86,20 @@ type WhipplehillAPIClient struct {
 	CookieJar *cookiejar.Jar
 	UserInfo  *UserInfo
 	Context   *Context
+	APIPaths  *WhippleHillAPIPaths
 }
 
 //NewWhipplehillAPIClient returns a new client with some things
-func NewWhipplehillAPIClient(baseurl string) *WhipplehillAPIClient {
+func NewWhipplehillAPIClient(baseURL string) *WhipplehillAPIClient {
 	j, _ := cookiejar.New(nil)
 	c := &http.Client{Timeout: time.Second * 15, Jar: j}
 	return &WhipplehillAPIClient{
-		BaseURL:   baseurl,
+		BaseURL:   baseURL,
 		Client:    c,
 		CookieJar: j,
 		UserInfo:  &UserInfo{},
 		Context:   &Context{},
+		APIPaths:  GetAPIPaths(baseURL),
 	}
 }
 
@@ -114,10 +116,11 @@ func (wac *WhipplehillAPIClient) request(method string, u string, body []byte, h
 	}
 
 	//Add headers
-	if headers != nil {
-		for k, v := range headers {
-			req.Header.Add(k, v)
-		}
+	if headers == nil {
+		headers = wac.defaultHeaders()
+	}
+	for k, v := range headers {
+		req.Header.Add(k, v)
 	}
 
 	//Execute request
@@ -150,7 +153,7 @@ func (wac *WhipplehillAPIClient) SignIn(username string, password string) error 
 		"Password": password,
 	}
 
-	body, err := wac.request("POST", WhippleHillAPIPaths.SignIn, payload.Marshal(), wac.defaultHeaders())
+	body, err := wac.request("POST", wac.APIPaths.SignIn, payload.Marshal(), nil)
 	if err != nil {
 		return err
 	}
@@ -167,9 +170,35 @@ func (wac *WhipplehillAPIClient) SignIn(username string, password string) error 
 	return nil
 }
 
-//LoadContexts does the shit
-func (wac *WhipplehillAPIClient) LoadContexts() error {
+//LoadUserContext gets the user context and fills the user struct.
+func (wac *WhipplehillAPIClient) LoadUserContext() error {
+	body, err := wac.request("GET", wac.APIPaths.Context, nil, nil)
+	if err != nil {
+		return err
+	}
+	jsonBody, err := unmarshal(body)
+	if err != nil {
+		return err
+	}
 
+	//This looks sort of gross but it's just type assertions
+	wac.UserInfo.UserID = jsonBody["UserInfo"].(H)["UserId"].(int)
+	wac.UserInfo.PersonaID = jsonBody["Personas"].([]H)[0]["Id"].(int)
+
+	return nil
+
+}
+
+//LoadSchoolContext gets the school context and fills the schoolcontext struct. Warning: this makes multiple requests.
+func (wac *WhipplehillAPIClient) LoadSchoolContext() error {
+	body, err := wac.request("GET", wac.APIPaths.SchoolContext, nil, nil)
+	if err != nil {
+		return err
+	}
+	jsonBody, err := unmarshal(body)
+	if err != nil {
+		return err
+	}
 }
 
 //Marshal converts the map to json
@@ -212,33 +241,6 @@ func addQueries(us string, qs map[string]string) string {
 	u.RawQuery = q.Encode()
 
 	return u.String()
-}
-
-func sendRequest(c *http.Client, method string, u string, body []byte, headers Headers) ([]byte, error) {
-	req, err := http.NewRequest(method, u, bytes.NewBufferString(string(body)))
-	if err != nil {
-		return nil, err
-	}
-
-	//Add headers
-	for k, v := range headers {
-		req.Header.Add(k, v)
-	}
-
-	//Execute request
-	res, err := c.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	//VERY IMPORTANT
-	defer res.Body.Close()
-	//Read the body into a []byte and return that.
-	resBody, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return resBody, nil
 }
 
 func unmarshal(data []byte) (H, error) {
