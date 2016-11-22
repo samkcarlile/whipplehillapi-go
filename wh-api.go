@@ -13,6 +13,7 @@ import (
 
 //Notes:
 // * There is a constant called MemberLevel that should always be equal to 3
+// * I need to actually check for the t cookie or sign in before I make some of these requests
 
 //WhippleHillAPIPaths holds the api paths
 type WhippleHillAPIPaths struct {
@@ -66,10 +67,19 @@ type Context struct {
 // different types of groups and if I ever want to fully wrap the api it's important to refer to things how they are
 // in the actual API
 type AcademicGroup struct {
-	SectionID     int64 // Ok...I have no idea what the difference between these is, but I am just doing it how their API does
-	LeadSectionID int64
-	Title         string
-	Grade         int
+	DurationID               int    `json:"DurationId"`
+	OwnerID                  int    `json:"OwnerId"`
+	AssignmentsActiveToday   int    `json:"assignmentactivetoday"`
+	AssignmentsAssignedToday int    `json:"assignmentassignedtoday"`
+	AssignmentsDueToday      int    `json:"assignmentduetoday"`
+	Description              string `json:"coursedescription"`
+	CumGrade                 string `json:"cumgrade"`
+	GroupOwnerName           string `json:"groupownername"`
+	GroupOwnerEmail          string `json:"groupowneremail"`
+	LeadSectionID            int    `json:"leadsectionid"`
+	MarkingPeriodID          int    `json:"markingperiodid"`
+	SectionID                int    `json:"sectionid"`
+	SectionTitle             string `json:"sectionidentifier"`
 }
 
 //Assignment is the struct for an assignment returned from when you get the gradebook of a class.
@@ -78,6 +88,14 @@ type Assignment struct {
 	Type             string
 	MaxPoints        int
 	Points           float32
+}
+
+//Term holds the terms data that comes back in an array from getting studentusergrouptermlist
+type Term struct {
+	CurrentIndicator int    `json:"CurrentInd"`
+	Description      string `json:"DurationDescription"`
+	DurationID       int    `json:"DurationId"`
+	OfferingType     int    `json:"OfferingType"`
 }
 
 //WhipplehillAPIClient is the full client wrapper for whipplehill.
@@ -171,79 +189,139 @@ func (wac *WhipplehillAPIClient) SignIn(username string, password string) error 
 	return nil
 }
 
-//LoadUserContext gets the user context and fills the user struct.
-func (wac *WhipplehillAPIClient) LoadUserContext() error {
+//GetUserContext returns the user context json in a map[string]interface{}
+func (wac *WhipplehillAPIClient) GetUserContext() (map[string]interface{}, error) {
 	body, err := wac.request("GET", wac.APIPaths.Context, nil, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	jsonBody, err := unmarshal(body)
+	var result map[string]interface{}
+	err = json.Unmarshal(body, result)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	//This looks sort of gross but it's just type assertions
-	wac.UserInfo.UserID = jsonBody["UserInfo"].(H)["UserId"].(int)
-	wac.UserInfo.PersonaID = jsonBody["Personas"].([]H)[0]["Id"].(int)
-
-	return nil
-
+	return result, nil
 }
 
-//LoadSchoolContext gets the school context and fills the schoolcontext struct. Warning: this makes multiple requests.
-func (wac *WhipplehillAPIClient) LoadSchoolContext() error {
+//GetSchoolContext returns the school context json in a map[string]interface{}
+func (wac *WhipplehillAPIClient) GetSchoolContext() (map[string]interface{}, error) {
 	body, err := wac.request("GET", wac.APIPaths.SchoolContext, nil, nil)
 	if err != nil {
-		return err
-	}
-	jsonBody, err := unmarshal(body)
-	if err != nil {
-		return err
-	}
-	wac.Context.SchoolYearLabel = jsonBody["CurrentSchoolYear"].(H)["SchoolYearLabel"].(string)
-	wac.Context.SchoolName = jsonBody["SchoolInfo"].(H)["SchoolName"].(string)
-
-	err = wac.getCurrentDurationID()
-	if err != nil {
-		return err
+		return nil, err
 	}
 
+	var result map[string]interface{}
+	err = json.Unmarshal(body, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
-//
-
-func (wac *WhipplehillAPIClient) getCurrentDurationID() error {
+//GetTermList returns a term list for the current user. Again, I need to check if the login is succesfull...
+func (wac *WhipplehillAPIClient) GetTermList(userID int, personaID int, schoolYearLabel string) ([]Term, error) {
 	urlWithQueries := addQueries(wac.APIPaths.TermList, map[string]string{
-		"studentUserId":   string(wac.UserInfo.UserID),
-		"personaId":       string(wac.UserInfo.PersonaID),
-		"schoolYearLabel": wac.Context.SchoolYearLabel,
+		"studentUserId":   string(userID),
+		"personaId":       string(personaID),
+		"schoolYearLabel": schoolYearLabel,
 	})
 	body, err := wac.request("GET", urlWithQueries, nil, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	durations := make([]H, 0)
-	err = json.Unmarshal(body, durations)
+	terms := make([]Term, 0)
+	err = json.Unmarshal(body, terms)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	return terms, nil
+}
+
+//GetCurrentAcademicTerm uses the current academic term id for the durationList parameter.
+func (wac *WhipplehillAPIClient) GetCurrentAcademicTerm(terms []Term) *Term {
+	var currentTerm Term
 	found := false
-	var duration H
-	for i := 0; i < len(durations) && !found; i++ {
-		duration = durations[i]
-		currentIndicator := duration["CurrentInd"].(int)
-		offeringType := duration["OfferingType"].(int)
-		if offeringType == 1 && currentIndicator == 1 {
+
+	for i := 0; i < len(terms) && !found; i++ {
+		currentTerm = terms[i]
+		if currentTerm.OfferingType == 1 && currentTerm.CurrentIndicator == 1 {
 			found = true
 		}
 	}
 
-	wac.Context.CurrentDurationID = duration["DurationId"].(int)
-	return nil
+	return &currentTerm
+}
+
+//GetAcademicGroups returns an array of the user's academic groups provided the term
+func (wac *WhipplehillAPIClient) GetAcademicGroups(userID int, schoolYearLabel string, personaID int, durationID int) ([]AcademicGroup, error) {
+	urlWithQueries := addQueries(wac.APIPaths.AcademicGroups, map[string]string{
+		"userId":          string(userID),
+		"schoolYearLabel": schoolYearLabel,
+		"memberLevel":     string(3),
+		"persona":         string(personaID),
+		"durationList":    string(durationID),
+		"markingPeriodId": "", //idk why but you have to have this or you'll get an error
+	})
+
+	body, err := wac.request("GET", urlWithQueries, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result = make([]AcademicGroup, 0)
+	err = json.Unmarshal(body, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
 
 }
+
+//Get
+
+//LoadUserContext gets the user context and fills the user struct. NOTE: needs to be renamed based on the new api design
+// func (wac *WhipplehillAPIClient) LoadUserContext() error {
+// 	body, err := wac.request("GET", wac.APIPaths.Context, nil, nil)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	jsonBody, err := unmarshal(body)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	//This looks sort of gross but it's just type assertions
+// 	wac.UserInfo.UserID = jsonBody["UserInfo"].(H)["UserId"].(int)
+// 	wac.UserInfo.PersonaID = jsonBody["Personas"].([]H)[0]["Id"].(int)
+
+// 	return nil
+
+// }
+
+// //LoadSchoolContext gets the school context and fills the schoolcontext struct. Warning: this makes multiple requests.
+// func (wac *WhipplehillAPIClient) LoadSchoolContext() error {
+// 	body, err := wac.request("GET", wac.APIPaths.SchoolContext, nil, nil)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	jsonBody, err := unmarshal(body)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	wac.Context.SchoolYearLabel = jsonBody["CurrentSchoolYear"].(H)["SchoolYearLabel"].(string)
+// 	wac.Context.SchoolName = jsonBody["SchoolInfo"].(H)["SchoolName"].(string)
+
+// 	err = wac.getCurrentDurationID()
+// 	if err != nil {
+// 		return err
+// 	}
+
+// }
 
 func (wac *WhipplehillAPIClient) getAcademicGroups() error {
 	urlWithQueries := addQueries(wac.APIPaths.AcademicGroups, map[string]string{
