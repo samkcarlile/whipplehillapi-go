@@ -15,6 +15,7 @@ import (
 //Notes:
 // * There is a constant called MemberLevel that should always be equal to 3
 // * I need to actually check for the t cookie or sign in before I make some of these requests
+// * There must be a method to manually load the context and userinfo values
 
 type (
 	//WhippleHillAPIPaths holds the api paths
@@ -92,6 +93,7 @@ type (
 		UserInfo  *UserInfo
 		Context   *Context
 		APIPaths  *WhippleHillAPIPaths
+		SignedIn  bool
 	}
 )
 
@@ -125,6 +127,7 @@ func NewWhipplehillAPIClient(baseURL string) *WhipplehillAPIClient {
 		UserInfo:  &UserInfo{},
 		Context:   &Context{},
 		APIPaths:  GetAPIPaths(baseURL),
+		SignedIn:  false,
 	}
 }
 
@@ -170,7 +173,8 @@ func (wac *WhipplehillAPIClient) defaultHeaders() Headers {
 	}
 }
 
-//SignIn uses the provided username and password to attempt a sign in request.
+//SignIn uses the provided username and password to attempt a sign in request. If succesfull, it gets the contexts and fills that too.
+// The api is ready to be used after this is called.
 func (wac *WhipplehillAPIClient) SignIn(username string, password string) error {
 
 	payload := map[string]string{
@@ -194,11 +198,17 @@ func (wac *WhipplehillAPIClient) SignIn(username string, password string) error 
 	}
 	wac.UserInfo.Username = username
 	wac.UserInfo.Password = password
+	wac.SignedIn = true
 	return nil
 }
 
 //GetUserContext returns the user context json in a map[string]interface{}
 func (wac *WhipplehillAPIClient) GetUserContext() (map[string]interface{}, error) {
+	err := wac.checkSignIn()
+	if err != nil {
+		return nil, err
+	}
+
 	body, err := wac.request("GET", wac.APIPaths.Context, nil, nil)
 	if err != nil {
 		return nil, err
@@ -212,8 +222,39 @@ func (wac *WhipplehillAPIClient) GetUserContext() (map[string]interface{}, error
 	return result, nil
 }
 
+func (wac *WhipplehillAPIClient) checkSignIn() error {
+	if !wac.SignedIn {
+		return errors.New("Not signed in. Must call wac.SignIn before subsequent API calls.")
+	}
+	return nil
+}
+
+func (wac *WhipplehillAPIClient) checkContexts() error {
+	if len(wac.Context.SchoolName) < 1 || len(wac.Context.SchoolYearLabel) < 1 {
+		return errors.New("Context hasn't been loaded. Must call wac.LoadContexts before subsequent API calls not including wac.SignIn")
+	}
+	return nil
+}
+
+func (wac *WhipplehillAPIClient) checkReady() error {
+	err1 := wac.checkSignIn()
+	err2 := wac.checkContexts()
+	if err1 != nil {
+		return err1
+	}
+	if err2 != nil {
+		return err2
+	}
+	return nil
+}
+
 //GetSchoolContext returns the school context json in a map[string]interface{}
 func (wac *WhipplehillAPIClient) GetSchoolContext() (map[string]interface{}, error) {
+	err := wac.checkSignIn()
+	if err != nil {
+		return nil, err
+	}
+
 	body, err := wac.request("GET", wac.APIPaths.SchoolContext, nil, nil)
 	if err != nil {
 		return nil, err
@@ -228,12 +269,45 @@ func (wac *WhipplehillAPIClient) GetSchoolContext() (map[string]interface{}, err
 	return result, nil
 }
 
+//LoadContexts gets the user and school context and fills some important variables
+func (wac *WhipplehillAPIClient) LoadContexts() error {
+	err := wac.checkSignIn()
+	if err != nil {
+		return err
+	}
+
+	userCtx, err := wac.GetUserContext()
+	if err != nil {
+		return err
+	}
+
+	//todo: add error checking to these type assertions
+	wac.UserInfo.UserID = userCtx["UserInfo"].(map[string]interface{})["UserId"].(int)
+	wac.UserInfo.PersonaID = userCtx["Personas"].([]map[string]interface{})[0]["Id"].(int)
+
+	schoolCtx, err := wac.GetSchoolContext()
+	if err != nil {
+		return err
+	}
+
+	//todo: add error checking to these type assertions
+	wac.Context.SchoolName = schoolCtx["SchoolInfo"].(map[string]interface{})["SchoolName"].(string)
+	wac.Context.SchoolYearLabel = schoolCtx["CurrentSchoolYear"].(map[string]interface{})["SchoolYearLabel"].(string)
+
+	return nil
+}
+
 //GetTermList returns a term list for the current user. Again, I need to check if the login is succesfull...
-func (wac *WhipplehillAPIClient) GetTermList(userID int, personaID int, schoolYearLabel string) ([]Term, error) {
+func (wac *WhipplehillAPIClient) GetTermList() ([]Term, error) {
+	err := wac.checkReady()
+	if err != nil {
+		return nil, err
+	}
+
 	urlWithQueries := addQueries(wac.APIPaths.TermList, map[string]string{
-		"studentUserId":   string(userID),
-		"personaId":       string(personaID),
-		"schoolYearLabel": schoolYearLabel,
+		"studentUserId":   string(wac.UserInfo.UserID),
+		"personaId":       string(wac.UserInfo.PersonaID),
+		"schoolYearLabel": wac.Context.SchoolYearLabel,
 	})
 	body, err := wac.request("GET", urlWithQueries, nil, nil)
 	if err != nil {
@@ -264,13 +338,21 @@ func (wac *WhipplehillAPIClient) GetCurrentAcademicTerm(terms []Term) *Term {
 	return &currentTerm
 }
 
-//GetAcademicGroups returns an array of the user's academic groups provided the term
-func (wac *WhipplehillAPIClient) GetAcademicGroups(userID int, schoolYearLabel string, personaID int, durationID int) ([]AcademicGroup, error) {
+//GetAcademicGroups returns an array of the user's academic groups provided the durationID of the term (the marking period is automatically set as the current marking period.)
+// Note: I have left out entirley the request that returns the marking periods for a given term because of this exact reason ^
+// Also, this is how the Client gets the markingid...It's assuming you are going to call this at some point before you call anything that relies on that.
+// This may be a bad design but it can be easily fixed.
+func (wac *WhipplehillAPIClient) GetAcademicGroups(durationID int) ([]AcademicGroup, error) {
+	err := wac.checkReady()
+	if err != nil {
+		return nil, err
+	}
+
 	urlWithQueries := addQueries(wac.APIPaths.AcademicGroups, map[string]string{
-		"userId":          string(userID),
-		"schoolYearLabel": schoolYearLabel,
-		"memberLevel":     string(3),
-		"persona":         string(personaID),
+		"userId":          string(wac.UserInfo.UserID),
+		"schoolYearLabel": wac.Context.SchoolYearLabel,
+		"memberLevel":     string(3), //this is an apparent constant (for students at least)
+		"persona":         string(wac.UserInfo.PersonaID),
 		"durationList":    string(durationID),
 		"markingPeriodId": "", //idk why but you have to have this or you'll get an error
 	})
@@ -286,16 +368,24 @@ func (wac *WhipplehillAPIClient) GetAcademicGroups(userID int, schoolYearLabel s
 		return nil, err
 	}
 
+	//This is where we hackily snatch the CurrentMarkingPeriodID (instead of sending a request for it and finding it, which is possible but not in this codebase.)
+	wac.Context.CurrentMarkingPeriodID = result[0].MarkingPeriodID //bc they are all the same. It's a list of the current classees the student is taking..its assuming youu're taking classes.
+
 	return result, nil
 
 }
 
-//GetGradebookAssignments returns a list of gradebook assignments for the given class (determined by the sectionID parameter)
-func (wac *WhipplehillAPIClient) GetGradebookAssignments(userID int, sectionID int, markingPeriodID int) ([]Assignment, error) {
+//GetAssignments returns a list of gradebook assignments for the given class (determined by the sectionID parameter)
+func (wac *WhipplehillAPIClient) GetAssignments(sectionID int) ([]Assignment, error) {
+	err := wac.checkSignIn()
+	if err != nil {
+		return nil, err
+	}
+
 	urlWithQueries := addQueries(wac.APIPaths.GradebookAssignments, map[string]string{
 		"sectionId":       string(sectionID),
-		"markingPeriodId": string(markingPeriodID),
-		"studentUserId":   string(userID),
+		"markingPeriodId": string(wac.Context.CurrentMarkingPeriodID),
+		"studentUserId":   string(wac.UserInfo.UserID),
 	})
 
 	body, err := wac.request("GET", urlWithQueries, nil, nil)
