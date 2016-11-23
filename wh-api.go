@@ -200,7 +200,8 @@ func (wac *WhipplehillAPIClient) SignIn(username string, password string) error 
 	if err != nil {
 		return err
 	}
-	jsonBody, err := unmarshal(body)
+	var jsonBody map[string]interface{}
+	err = json.Unmarshal(body, jsonBody)
 	if err != nil {
 		return err
 	}
@@ -426,13 +427,4 @@ func addQueries(us string, qs map[string]string) string {
 	u.RawQuery = q.Encode()
 
 	return u.String()
-}
-
-func unmarshal(data []byte) (map[string]interface{}, error) {
-	var result map[string]interface{}
-	err := json.Unmarshal(data, &result)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
 }
