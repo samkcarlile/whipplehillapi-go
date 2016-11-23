@@ -281,7 +281,7 @@ func (wac *WhipplehillAPIClient) GetSchoolContext() (map[string]interface{}, err
 	return result, nil
 }
 
-//LoadContexts gets the user and school context and fills some important variables
+//GetContexts gets the user and school context and fills some important variables
 func (wac *WhipplehillAPIClient) GetContexts() error {
 	err := wac.checkSignIn()
 	if err != nil {
