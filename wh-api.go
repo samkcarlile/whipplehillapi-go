@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -84,10 +85,16 @@ type AcademicGroup struct {
 
 //Assignment is the struct for an assignment returned from when you get the gradebook of a class.
 type Assignment struct {
-	ShortDescription string
-	Type             string
-	MaxPoints        int
-	Points           float32
+	ShortDescription string `json:"AssignmentShortDescription"`
+	Type             string `json:"AssignmentType"`
+	MaxPoints        int    `json:"MaxPoints"`
+	Points           string `json:"Points"`
+}
+
+//GetGrade calculates the grade of the assignment
+func (a *Assignment) GetGrade() float64 {
+	points, _ := strconv.ParseFloat(a.Points, 32)
+	return points / float64(a.MaxPoints)
 }
 
 //Term holds the terms data that comes back in an array from getting studentusergrouptermlist
@@ -282,7 +289,27 @@ func (wac *WhipplehillAPIClient) GetAcademicGroups(userID int, schoolYearLabel s
 
 }
 
-//Get
+//GetGradebookAssignments returns a list of gradebook assignments for the given class (determined by the sectionID parameter)
+func (wac *WhipplehillAPIClient) GetGradebookAssignments(userID int, sectionID int, markingPeriodID int) ([]Assignment, error) {
+	urlWithQueries := addQueries(wac.APIPaths.GradebookAssignments, map[string]string{
+		"sectionId":       string(sectionID),
+		"markingPeriodId": string(markingPeriodID),
+		"studentUserId":   string(userID),
+	})
+
+	body, err := wac.request("GET", urlWithQueries, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	assignments := make([]Assignment, 0)
+	err = json.Unmarshal(body, assignments)
+	if err != nil {
+		return nil, err
+	}
+
+	return assignments, nil
+}
 
 //LoadUserContext gets the user context and fills the user struct. NOTE: needs to be renamed based on the new api design
 // func (wac *WhipplehillAPIClient) LoadUserContext() error {
