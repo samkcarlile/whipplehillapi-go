@@ -40,9 +40,6 @@ func GetAPIPaths(baseURL string) *WhippleHillAPIPaths {
 	}
 }
 
-//H shortcut
-type H map[string]interface{}
-
 //Headers is used in the wac.request method
 type Headers map[string]string
 
@@ -174,12 +171,14 @@ func (wac *WhipplehillAPIClient) defaultHeaders() Headers {
 //SignIn uses the provided username and password to attempt a sign in request.
 func (wac *WhipplehillAPIClient) SignIn(username string, password string) error {
 
-	payload := &H{
+	payload := map[string]string{
 		"Username": username,
 		"Password": password,
 	}
 
-	body, err := wac.request("POST", wac.APIPaths.SignIn, payload.Marshal(), nil)
+	jsonPayload, err := json.Marshal(payload)
+
+	body, err := wac.request("POST", wac.APIPaths.SignIn, jsonPayload, nil)
 	if err != nil {
 		return err
 	}
@@ -350,37 +349,6 @@ func (wac *WhipplehillAPIClient) GetGradebookAssignments(userID int, sectionID i
 
 // }
 
-func (wac *WhipplehillAPIClient) getAcademicGroups() error {
-	urlWithQueries := addQueries(wac.APIPaths.AcademicGroups, map[string]string{
-		"userId":          string(wac.UserInfo.UserID),
-		"schoolYearLabel": string(wac.Context.SchoolYearLabel),
-		"memberLevel":     "3",
-		"persona":         string(wac.UserInfo.PersonaID),
-		"durationList":    string(wac.Context.CurrentDurationID),
-		"markingPeriodId": "", //This has to be sent with nothing in it or the request returns an error.
-	})
-	body, err := wac.request("GET", urlWithQueries, nil, nil)
-	if err != nil {
-		return err
-	}
-
-	academicGroups := make([]H, 0)
-	err = json.Unmarshal(body, academicGroups)
-	if err != nil {
-		return err
-	}
-
-}
-
-//Marshal converts the map to json
-func (h *H) Marshal() []byte {
-	result, err := json.Marshal(h)
-	if err != nil {
-		panic(err)
-	}
-	return result
-}
-
 func main() {
 
 	wac := NewWhipplehillAPIClient("https://fwcd.myschoolapp.com")
@@ -414,7 +382,7 @@ func addQueries(us string, qs map[string]string) string {
 	return u.String()
 }
 
-func unmarshal(data []byte) (H, error) {
+func unmarshal(data []byte) (map[string]interface{}, error) {
 	var result map[string]interface{}
 	err := json.Unmarshal(data, &result)
 	if err != nil {
