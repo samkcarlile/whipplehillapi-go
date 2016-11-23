@@ -1,12 +1,13 @@
 package whapi
 
 import (
-	"encoding/json"
-	"strconv"
+	"fmt"
 	"testing"
 )
 
 var wac *WhipplehillAPIClient
+var currentTerm *Term
+var groups []AcademicGroup
 
 func TestSignIn(t *testing.T) {
 	wac = NewWhipplehillAPIClient("https://fwcd.myschoolapp.com")
@@ -16,7 +17,6 @@ func TestSignIn(t *testing.T) {
 		t.Error(err)
 	}
 
-	println("Username: " + wac.UserInfo.Username + ", Password: " + wac.UserInfo.Password)
 }
 
 func TestContexts(t *testing.T) {
@@ -25,10 +25,9 @@ func TestContexts(t *testing.T) {
 		t.Error(err)
 	}
 
-	println("wac.UserInfo")
-	println("UserID: " + strconv.Itoa(wac.UserInfo.UserID) + ", PersonaID: " + strconv.Itoa(wac.UserInfo.PersonaID))
-	println("wac.Context")
-	println("School Year: " + wac.Context.SchoolYearLabel + ", School Name: " + wac.Context.SchoolName)
+	println(wac.UserInfo.String())
+	println(wac.Context.String())
+
 }
 
 func TestTerms(t *testing.T) {
@@ -36,10 +35,31 @@ func TestTerms(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	wtf, _ := json.Marshal(terms)
-	println(string(wtf))
-	//term := wac.GetCurrentAcademicTerm(terms)
-	println("Current Academic Term")
-	// println("Desc: " + term.Description)
-	println("CurrentDurationID (from wac.Context): " + strconv.Itoa(wac.Context.CurrentDurationID))
+	println("Printing Term List!")
+	for i := range terms {
+		println(terms[i].String() + ",")
+	}
+
+	currentTerm = wac.GetCurrentAcademicTerm(terms)
+}
+
+func TestGetClasses(t *testing.T) {
+	var err error
+	groups, err = wac.GetAcademicGroups(currentTerm.DurationID)
+	if err != nil {
+		t.Error(err)
+	}
+
+}
+
+func TestGetAsssignments(t *testing.T) {
+	assignments, err := wac.GetAssignments(groups[0].SectionID)
+	if err != nil {
+		t.Error(err)
+	}
+	println("ASSIGNMENTS FOR CLASS: " + groups[0].SectionTitle)
+	for i := range assignments {
+		fmt.Printf("%v - %f", assignments[i].ShortDescription, assignments[i].GetGrade()*100)
+		println()
+	}
 }
