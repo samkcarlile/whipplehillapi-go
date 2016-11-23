@@ -16,16 +16,84 @@ import (
 // * There is a constant called MemberLevel that should always be equal to 3
 // * I need to actually check for the t cookie or sign in before I make some of these requests
 
-//WhippleHillAPIPaths holds the api paths
-type WhippleHillAPIPaths struct {
-	SignIn               string
-	SchoolContext        string
-	Context              string
-	TermList             string
-	AcademicGroups       string
-	MarkingPeriods       string
-	GradebookAssignments string
-}
+type (
+	//WhippleHillAPIPaths holds the api paths
+	WhippleHillAPIPaths struct {
+		SignIn               string
+		SchoolContext        string
+		Context              string
+		TermList             string
+		AcademicGroups       string
+		MarkingPeriods       string
+		GradebookAssignments string
+	}
+
+	//UserInfo has the username and password of the user along with some other stuff like the UserID
+	//and things related to the user that don't change with every request. Anything in the student context will be on this struct.
+	UserInfo struct {
+		Username  string
+		Password  string
+		UserID    int
+		PersonaID int
+	}
+
+	//Context has things that aren't directly related to user's characterstics but rather the actual classes and sections
+	// that the user is in. Anything in the school context or other necessary information will be stored on this struct.
+	Context struct {
+		SchoolName             string
+		SchoolYearLabel        string
+		CurrentDurationID      int //this is a semester identifier
+		CurrentMarkingPeriodID int //this is a quarter identifier. You need both
+	}
+
+	//AcademicGroup is synonymous with a class that the user is enrolled in. I just use AcademicGroup because there are
+	// different types of groups and if I ever want to fully wrap the api it's important to refer to things how they are
+	// in the actual API
+	AcademicGroup struct {
+		DurationID               int    `json:"DurationId"`
+		OwnerID                  int    `json:"OwnerId"`
+		AssignmentsActiveToday   int    `json:"assignmentactivetoday"`
+		AssignmentsAssignedToday int    `json:"assignmentassignedtoday"`
+		AssignmentsDueToday      int    `json:"assignmentduetoday"`
+		Description              string `json:"coursedescription"`
+		CumGrade                 string `json:"cumgrade"`
+		GroupOwnerName           string `json:"groupownername"`
+		GroupOwnerEmail          string `json:"groupowneremail"`
+		LeadSectionID            int    `json:"leadsectionid"`
+		MarkingPeriodID          int    `json:"markingperiodid"`
+		SectionID                int    `json:"sectionid"`
+		SectionTitle             string `json:"sectionidentifier"`
+	}
+
+	//Assignment is the struct for an assignment returned from when you get the gradebook of a class.
+	Assignment struct {
+		ShortDescription string `json:"AssignmentShortDescription"`
+		Type             string `json:"AssignmentType"`
+		MaxPoints        int    `json:"MaxPoints"`
+		Points           string `json:"Points"`
+	}
+
+	//Term holds the terms data that comes back in an array from getting studentusergrouptermlist
+	Term struct {
+		CurrentIndicator int    `json:"CurrentInd"`
+		Description      string `json:"DurationDescription"`
+		DurationID       int    `json:"DurationId"`
+		OfferingType     int    `json:"OfferingType"`
+	}
+
+	//Headers is used in the wac.request method
+	Headers map[string]string
+
+	//WhipplehillAPIClient is the full client wrapper for whipplehill.
+	WhipplehillAPIClient struct {
+		BaseURL   string
+		Client    *http.Client
+		CookieJar *cookiejar.Jar
+		UserInfo  *UserInfo
+		Context   *Context
+		APIPaths  *WhippleHillAPIPaths
+	}
+)
 
 //GetAPIPaths returns a WhippleHillAPIPaths struct with the paths set to the provided baseURL.
 func GetAPIPaths(baseURL string) *WhippleHillAPIPaths {
@@ -40,76 +108,10 @@ func GetAPIPaths(baseURL string) *WhippleHillAPIPaths {
 	}
 }
 
-//Headers is used in the wac.request method
-type Headers map[string]string
-
-//UserInfo has the username and password of the user along with some other stuff like the UserID
-//and things related to the user that don't change with every request. Anything in the student context will be on this struct.
-type UserInfo struct {
-	Username  string
-	Password  string
-	UserID    int
-	PersonaID int
-}
-
-//Context has things that aren't directly related to user's characterstics but rather the actual classes and sections
-// that the user is in. Anything in the school context or other necessary information will be stored on this struct.
-type Context struct {
-	SchoolName             string
-	SchoolYearLabel        string
-	CurrentDurationID      int //this is a semester identifier
-	CurrentMarkingPeriodID int //this is a quarter identifier. You need both
-}
-
-//AcademicGroup is synonymous with a class that the user is enrolled in. I just use AcademicGroup because there are
-// different types of groups and if I ever want to fully wrap the api it's important to refer to things how they are
-// in the actual API
-type AcademicGroup struct {
-	DurationID               int    `json:"DurationId"`
-	OwnerID                  int    `json:"OwnerId"`
-	AssignmentsActiveToday   int    `json:"assignmentactivetoday"`
-	AssignmentsAssignedToday int    `json:"assignmentassignedtoday"`
-	AssignmentsDueToday      int    `json:"assignmentduetoday"`
-	Description              string `json:"coursedescription"`
-	CumGrade                 string `json:"cumgrade"`
-	GroupOwnerName           string `json:"groupownername"`
-	GroupOwnerEmail          string `json:"groupowneremail"`
-	LeadSectionID            int    `json:"leadsectionid"`
-	MarkingPeriodID          int    `json:"markingperiodid"`
-	SectionID                int    `json:"sectionid"`
-	SectionTitle             string `json:"sectionidentifier"`
-}
-
-//Assignment is the struct for an assignment returned from when you get the gradebook of a class.
-type Assignment struct {
-	ShortDescription string `json:"AssignmentShortDescription"`
-	Type             string `json:"AssignmentType"`
-	MaxPoints        int    `json:"MaxPoints"`
-	Points           string `json:"Points"`
-}
-
 //GetGrade calculates the grade of the assignment
 func (a *Assignment) GetGrade() float64 {
 	points, _ := strconv.ParseFloat(a.Points, 32)
 	return points / float64(a.MaxPoints)
-}
-
-//Term holds the terms data that comes back in an array from getting studentusergrouptermlist
-type Term struct {
-	CurrentIndicator int    `json:"CurrentInd"`
-	Description      string `json:"DurationDescription"`
-	DurationID       int    `json:"DurationId"`
-	OfferingType     int    `json:"OfferingType"`
-}
-
-//WhipplehillAPIClient is the full client wrapper for whipplehill.
-type WhipplehillAPIClient struct {
-	BaseURL   string
-	Client    *http.Client
-	CookieJar *cookiejar.Jar
-	UserInfo  *UserInfo
-	Context   *Context
-	APIPaths  *WhippleHillAPIPaths
 }
 
 //NewWhipplehillAPIClient returns a new client with some things
@@ -308,64 +310,6 @@ func (wac *WhipplehillAPIClient) GetGradebookAssignments(userID int, sectionID i
 	}
 
 	return assignments, nil
-}
-
-//LoadUserContext gets the user context and fills the user struct. NOTE: needs to be renamed based on the new api design
-// func (wac *WhipplehillAPIClient) LoadUserContext() error {
-// 	body, err := wac.request("GET", wac.APIPaths.Context, nil, nil)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	jsonBody, err := unmarshal(body)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	//This looks sort of gross but it's just type assertions
-// 	wac.UserInfo.UserID = jsonBody["UserInfo"].(H)["UserId"].(int)
-// 	wac.UserInfo.PersonaID = jsonBody["Personas"].([]H)[0]["Id"].(int)
-
-// 	return nil
-
-// }
-
-// //LoadSchoolContext gets the school context and fills the schoolcontext struct. Warning: this makes multiple requests.
-// func (wac *WhipplehillAPIClient) LoadSchoolContext() error {
-// 	body, err := wac.request("GET", wac.APIPaths.SchoolContext, nil, nil)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	jsonBody, err := unmarshal(body)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	wac.Context.SchoolYearLabel = jsonBody["CurrentSchoolYear"].(H)["SchoolYearLabel"].(string)
-// 	wac.Context.SchoolName = jsonBody["SchoolInfo"].(H)["SchoolName"].(string)
-
-// 	err = wac.getCurrentDurationID()
-// 	if err != nil {
-// 		return err
-// 	}
-
-// }
-
-func main() {
-
-	wac := NewWhipplehillAPIClient("https://fwcd.myschoolapp.com")
-
-	err := wac.SignIn("sam.carlile", "spicysausage")
-	if err != nil {
-		panic(err)
-	}
-	println(wac.UserInfo.Username)
-
-	//StudentGroupTermList gets a json array off all the possible terms. This includes sports terms and stuff.
-	// req, err = http.NewRequest("GET", baseUrl+Urls["STUDENT_GROUP_TERM_LIST"], nil)
-	// q := req.URL.Query()
-	// q.Add("studentUserId", strconv.Itoa(int(studentContext["UserInfo"].(map[string]interface{})["UserId"].(float64))))
-	// q.Add("schoolYearLabel", schoolContext["CurrentSchoolYear"].(map[string]interface{})["SchoolYearLabel"].(string))
-	// q.Add("personaId", strconv.Itoa(int(studentContext["Personas"].([]interface{})[0].(map[string]interface{})["Id"].(float64))))
-	// req.URL.RawQuery = q.Encode()
 }
 
 func addQueries(us string, qs map[string]string) string {
