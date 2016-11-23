@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
@@ -96,6 +97,63 @@ type (
 		SignedIn  bool
 	}
 )
+
+//I've grouped all the String methods here
+
+func (u *UserInfo) String() string {
+	return fmt.Sprintf(`UserInfo{
+		Username: %v,
+		Password: %v,
+		UserID: %v,
+		PersonaID: %v
+	}`, u.Username, u.Password, u.UserID, u.PersonaID)
+}
+
+func (c *Context) String() string {
+	return fmt.Sprintf(`Context{
+		SchoolName: %v
+		SchoolYearLabel: %v
+		CurrentDurationID: %v
+		CurrentMarkingPeriodID: %v
+	}`, c.SchoolName, c.SchoolYearLabel, c.CurrentDurationID, c.CurrentMarkingPeriodID)
+}
+
+func (a *AcademicGroup) String() string {
+	return fmt.Sprintf(`AcademicGroup{
+		DurationID: %f
+		OwnerID: %f
+		AssignmentsActiveToday: %f
+		AssignmentsAssignedToday: %f
+		AssignmentsDueToday: %f
+		Description: %v
+		CumGrade: %v
+		GroupOwnerName: %v
+		GroupOwnerEmail: %v
+		LeadSectionID: %f
+		MarkingPeriodID: %f
+		SectionID: %f
+		SectionTitle: %v
+	}`, a.DurationID, a.OwnerID, a.AssignmentsActiveToday, a.AssignmentsAssignedToday, a.AssignmentsDueToday,
+		a.Description, a.CumGrade, a.GroupOwnerName, a.GroupOwnerEmail, a.LeadSectionID, a.MarkingPeriodID, a.SectionID, a.SectionTitle)
+}
+
+func (a *Assignment) String() string {
+	return fmt.Sprintf(`Assignment{
+		ShortDescription: %v
+		Type: %v
+		MaxPoints: %f
+		Points %v
+	}`, a.ShortDescription, a.Type, a.MaxPoints, a.Points)
+}
+
+func (t *Term) String() string {
+	return fmt.Sprintf(`Term{
+		CurrentIndicator: %f
+		Description: %v
+		DurationID: %f
+		OfferingType: %f
+	}`, t.CurrentIndicator, t.Description, t.DurationID, t.OfferingType)
+}
 
 //GetAPIPaths returns a WhippleHillAPIPaths struct with the paths set to the provided baseURL.
 func GetAPIPaths(baseURL string) *WhippleHillAPIPaths {
