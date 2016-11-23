@@ -34,8 +34,8 @@ type (
 	UserInfo struct {
 		Username  string
 		Password  string
-		UserID    int
-		PersonaID int
+		UserID    string
+		PersonaID string
 	}
 
 	//Context has things that aren't directly related to user's characterstics but rather the actual classes and sections
@@ -43,43 +43,43 @@ type (
 	Context struct {
 		SchoolName             string
 		SchoolYearLabel        string
-		CurrentDurationID      int //this is a semester identifier
-		CurrentMarkingPeriodID int //this is a quarter identifier. You need both
+		CurrentDurationID      string //this is a semester identifier
+		CurrentMarkingPeriodID string //this is a quarter identifier. You need both
 	}
 
 	//AcademicGroup is synonymous with a class that the user is enrolled in. I just use AcademicGroup because there are
 	// different types of groups and if I ever want to fully wrap the api it's important to refer to things how they are
 	// in the actual API
 	AcademicGroup struct {
-		DurationID               int    `json:"DurationId"`
-		OwnerID                  int    `json:"OwnerId"`
-		AssignmentsActiveToday   int    `json:"assignmentactivetoday"`
-		AssignmentsAssignedToday int    `json:"assignmentassignedtoday"`
-		AssignmentsDueToday      int    `json:"assignmentduetoday"`
-		Description              string `json:"coursedescription"`
-		CumGrade                 string `json:"cumgrade"`
-		GroupOwnerName           string `json:"groupownername"`
-		GroupOwnerEmail          string `json:"groupowneremail"`
-		LeadSectionID            int    `json:"leadsectionid"`
-		MarkingPeriodID          int    `json:"markingperiodid"`
-		SectionID                int    `json:"sectionid"`
-		SectionTitle             string `json:"sectionidentifier"`
+		DurationID               float64 `json:"DurationId"`
+		OwnerID                  float64 `json:"OwnerId"`
+		AssignmentsActiveToday   float64 `json:"assignmentactivetoday"`
+		AssignmentsAssignedToday float64 `json:"assignmentassignedtoday"`
+		AssignmentsDueToday      float64 `json:"assignmentduetoday"`
+		Description              string  `json:"coursedescription"`
+		CumGrade                 string  `json:"cumgrade"`
+		GroupOwnerName           string  `json:"groupownername"`
+		GroupOwnerEmail          string  `json:"groupowneremail"`
+		LeadSectionID            float64 `json:"leadsectionid"`
+		MarkingPeriodID          float64 `json:"markingperiodid"`
+		SectionID                float64 `json:"sectionid"`
+		SectionTitle             string  `json:"sectionidentifier"`
 	}
 
 	//Assignment is the struct for an assignment returned from when you get the gradebook of a class.
 	Assignment struct {
-		ShortDescription string `json:"AssignmentShortDescription"`
-		Type             string `json:"AssignmentType"`
-		MaxPoints        int    `json:"MaxPoints"`
-		Points           string `json:"Points"`
+		ShortDescription string  `json:"AssignmentShortDescription"`
+		Type             string  `json:"AssignmentType"`
+		MaxPoints        float64 `json:"MaxPoints"`
+		Points           string  `json:"Points"`
 	}
 
 	//Term holds the terms data that comes back in an array from getting studentusergrouptermlist
 	Term struct {
-		CurrentIndicator int    `json:"CurrentInd"`
-		Description      string `json:"DurationDescription"`
-		DurationID       int    `json:"DurationId"`
-		OfferingType     int    `json:"OfferingType"`
+		CurrentIndicator float64 `json:"CurrentInd"`
+		Description      string  `json:"DurationDescription"`
+		DurationID       float64 `json:"DurationId"`
+		OfferingType     float64 `json:"OfferingType"`
 	}
 
 	//Headers is used in the wac.request method
@@ -295,8 +295,8 @@ func (wac *WhipplehillAPIClient) GetContexts() error {
 	}
 
 	//todo: add error checking to these type assertions
-	wac.UserInfo.UserID = userCtx["UserInfo"].(map[string]interface{})["UserId"].(int)
-	wac.UserInfo.PersonaID = userCtx["Personas"].([]map[string]interface{})[0]["Id"].(int)
+	wac.UserInfo.UserID = ftos(userCtx["UserInfo"].(map[string]interface{})["UserId"].(float64))
+	wac.UserInfo.PersonaID = ftos(userCtx["Personas"].([]interface{})[0].(map[string]interface{})["Id"].(float64))
 
 	schoolCtx, err := wac.GetSchoolContext()
 	if err != nil {
@@ -318,8 +318,8 @@ func (wac *WhipplehillAPIClient) GetTermList() ([]Term, error) {
 	}
 
 	urlWithQueries := addQueries(wac.APIPaths.TermList, map[string]string{
-		"studentUserId":   string(wac.UserInfo.UserID),
-		"personaId":       string(wac.UserInfo.PersonaID),
+		"studentUserId":   wac.UserInfo.UserID,
+		"personaId":       wac.UserInfo.PersonaID,
 		"schoolYearLabel": wac.Context.SchoolYearLabel,
 	})
 	body, err := wac.request("GET", urlWithQueries, nil, nil)
@@ -327,7 +327,7 @@ func (wac *WhipplehillAPIClient) GetTermList() ([]Term, error) {
 		return nil, err
 	}
 
-	terms := make([]Term, 0)
+	var terms []Term
 	err = json.Unmarshal(body, &terms)
 	if err != nil {
 		return nil, err
@@ -338,35 +338,39 @@ func (wac *WhipplehillAPIClient) GetTermList() ([]Term, error) {
 
 //GetCurrentAcademicTerm uses the current academic term id for the durationList parameter.
 func (wac *WhipplehillAPIClient) GetCurrentAcademicTerm(terms []Term) *Term {
-	var currentTerm Term
+	var currentTerm *Term
 	found := false
 
 	for i := 0; i < len(terms) && !found; i++ {
-		currentTerm = terms[i]
+		currentTerm = &terms[i]
 		if currentTerm.OfferingType == 1 && currentTerm.CurrentIndicator == 1 {
 			found = true
 		}
 	}
 
-	return &currentTerm
+	if currentTerm == nil {
+		panic(errors.New("Failed to find current term"))
+	}
+
+	return currentTerm
 }
 
 //GetAcademicGroups returns an array of the user's academic groups provided the durationID of the term (the marking period is automatically set as the current marking period.)
 // Note: I have left out entirley the request that returns the marking periods for a given term because of this exact reason ^
 // Also, this is how the Client gets the markingid...It's assuming you are going to call this at some point before you call anything that relies on that.
 // This may be a bad design but it can be easily fixed.
-func (wac *WhipplehillAPIClient) GetAcademicGroups(durationID int) ([]AcademicGroup, error) {
+func (wac *WhipplehillAPIClient) GetAcademicGroups(durationID float64) ([]AcademicGroup, error) {
 	err := wac.checkReady()
 	if err != nil {
 		return nil, err
 	}
 
 	urlWithQueries := addQueries(wac.APIPaths.AcademicGroups, map[string]string{
-		"userId":          string(wac.UserInfo.UserID),
+		"userId":          wac.UserInfo.UserID,
 		"schoolYearLabel": wac.Context.SchoolYearLabel,
-		"memberLevel":     string(3), //this is an apparent constant (for students at least)
-		"persona":         string(wac.UserInfo.PersonaID),
-		"durationList":    string(durationID),
+		"memberLevel":     "3", //this is an apparent constant (for students at least)
+		"persona":         wac.UserInfo.PersonaID,
+		"durationList":    ftos(durationID),
 		"markingPeriodId": "", //idk why but you have to have this or you'll get an error
 	})
 
@@ -382,21 +386,21 @@ func (wac *WhipplehillAPIClient) GetAcademicGroups(durationID int) ([]AcademicGr
 	}
 
 	//This is where we hackily snatch the CurrentMarkingPeriodID (instead of sending a request for it and finding it, which is possible but not in this codebase.)
-	wac.Context.CurrentMarkingPeriodID = result[0].MarkingPeriodID //bc they are all the same. It's a list of the current classees the student is taking..its assuming youu're taking classes.
+	wac.Context.CurrentMarkingPeriodID = ftos(result[0].MarkingPeriodID) //bc they are all the same. It's a list of the current classees the student is taking..its assuming youu're taking classes.
 
 	return result, nil
 
 }
 
 //GetAssignments returns a list of gradebook assignments for the given class (determined by the sectionID parameter)
-func (wac *WhipplehillAPIClient) GetAssignments(sectionID int) ([]Assignment, error) {
+func (wac *WhipplehillAPIClient) GetAssignments(sectionID float64) ([]Assignment, error) {
 	err := wac.checkSignIn()
 	if err != nil {
 		return nil, err
 	}
 
 	urlWithQueries := addQueries(wac.APIPaths.GradebookAssignments, map[string]string{
-		"sectionId":       string(sectionID),
+		"sectionId":       ftos(sectionID),
 		"markingPeriodId": string(wac.Context.CurrentMarkingPeriodID),
 		"studentUserId":   string(wac.UserInfo.UserID),
 	})
@@ -427,4 +431,8 @@ func addQueries(us string, qs map[string]string) string {
 	u.RawQuery = q.Encode()
 
 	return u.String()
+}
+
+func ftos(f float64) string {
+	return strconv.FormatFloat(f, 'f', 0, 64)
 }
