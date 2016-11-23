@@ -10,9 +10,10 @@ var currentTerm *Term
 var groups []AcademicGroup
 
 func TestSignIn(t *testing.T) {
+
 	wac = NewWhipplehillAPIClient("https://fwcd.myschoolapp.com")
 
-	err := wac.SignIn("sam.carlile", "spicysausage")
+	err := wac.SignIn("username", "password")
 	if err != nil {
 		t.Error(err)
 	}
