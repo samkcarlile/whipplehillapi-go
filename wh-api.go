@@ -13,9 +13,9 @@ import (
 )
 
 //Notes:
-// * There is a constant called MemberLevel that should always be equal to 3
-// * I need to actually check for the t cookie or sign in before I make some of these requests
-// * There must be a method to manually load the context and userinfo values
+// * (DONE) There is a constant called MemberLevel that should always be equal to 3
+// * (DONE) I need to actually check for the t cookie or sign in before I make some of these requests
+// * (KINDA DONE) There must be a method to manually load the context and userinfo values
 
 type (
 	//WhippleHillAPIPaths holds the api paths
