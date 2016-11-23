@@ -201,7 +201,7 @@ func (wac *WhipplehillAPIClient) SignIn(username string, password string) error 
 		return err
 	}
 	var jsonBody map[string]interface{}
-	err = json.Unmarshal(body, jsonBody)
+	err = json.Unmarshal(body, &jsonBody)
 	if err != nil {
 		return err
 	}
@@ -227,7 +227,7 @@ func (wac *WhipplehillAPIClient) GetUserContext() (map[string]interface{}, error
 		return nil, err
 	}
 	var result map[string]interface{}
-	err = json.Unmarshal(body, result)
+	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +274,7 @@ func (wac *WhipplehillAPIClient) GetSchoolContext() (map[string]interface{}, err
 	}
 
 	var result map[string]interface{}
-	err = json.Unmarshal(body, result)
+	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +328,7 @@ func (wac *WhipplehillAPIClient) GetTermList() ([]Term, error) {
 	}
 
 	terms := make([]Term, 0)
-	err = json.Unmarshal(body, terms)
+	err = json.Unmarshal(body, &terms)
 	if err != nil {
 		return nil, err
 	}
@@ -376,7 +376,7 @@ func (wac *WhipplehillAPIClient) GetAcademicGroups(durationID int) ([]AcademicGr
 	}
 
 	var result = make([]AcademicGroup, 0)
-	err = json.Unmarshal(body, result)
+	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return nil, err
 	}
@@ -407,7 +407,7 @@ func (wac *WhipplehillAPIClient) GetAssignments(sectionID int) ([]Assignment, er
 	}
 
 	assignments := make([]Assignment, 0)
-	err = json.Unmarshal(body, assignments)
+	err = json.Unmarshal(body, &assignments)
 	if err != nil {
 		return nil, err
 	}
