@@ -131,6 +131,18 @@ func NewWhipplehillAPIClient(baseURL string) *WhipplehillAPIClient {
 	}
 }
 
+//LoadUserInfo is my pointless lazy version of loading existing userinfo into the client
+func (wac *WhipplehillAPIClient) LoadUserInfo(ui *UserInfo) {
+	//probably should do some validation here
+	wac.UserInfo = ui
+}
+
+//LoadContext is again my pointless lazy version of loading existing context into the client.
+//This is more of a reminder for me to actually implement this in the future.
+func (wac *WhipplehillAPIClient) LoadContext(ctx *Context) {
+	wac.Context = ctx
+}
+
 func (wac *WhipplehillAPIClient) request(method string, u string, body []byte, headers Headers) ([]byte, error) {
 	var req *http.Request
 	var err error
@@ -270,7 +282,7 @@ func (wac *WhipplehillAPIClient) GetSchoolContext() (map[string]interface{}, err
 }
 
 //LoadContexts gets the user and school context and fills some important variables
-func (wac *WhipplehillAPIClient) LoadContexts() error {
+func (wac *WhipplehillAPIClient) GetContexts() error {
 	err := wac.checkSignIn()
 	if err != nil {
 		return err
